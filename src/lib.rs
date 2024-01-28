@@ -12,12 +12,82 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+use bollard::image::{BuildImageOptions, BuilderVersion};
+use bollard::models::BuildInfoAux;
+use bollard::Docker;
+use flate2::write::GzEncoder;
+
+use futures_util::stream::StreamExt;
+
+use std::io::Write;
+
+fn compress(dockerfile: &str) -> Vec<u8> {
+    let mut header = tar::Header::new_gnu();
+    header.set_path("Dockerfile").unwrap();
+    header.set_size(dockerfile.len() as u64);
+    header.set_mode(0o755);
+    header.set_cksum();
+    let mut tar = tar::Builder::new(Vec::new());
+    tar.append(&header, dockerfile.as_bytes()).unwrap();
+
+    let uncompressed = tar.into_inner().unwrap();
+    let mut c = flate2::write::GzEncoder::new(
+        Vec::new(),
+        flate2::Compression::default(),
+    );
+    c.write_all(&uncompressed).unwrap();
+    c.finish().unwrap()
+}
+
+fn build_options(id: &str) -> BuildImageOptions<&str> {
+    BuildImageOptions {
+        t: id,
+        dockerfile: "Dockerfile",
+        version: BuilderVersion::BuilderBuildKit,
+        pull: true,
+        session: Some(String::from(id)),
+        ..Default::default()
+    }
+}
+
+async fn docker_connect() -> Docker {
+    Docker::connect_with_socket_defaults().unwrap()
+}
+
+async fn build_image(docker: &Docker, id: &str, dockerfile_content: &str) {
+    let compressed = compress(dockerfile_content);
+    let build_image_options = build_options(id);
+
+    let mut image_build_stream =
+        docker.build_image(build_image_options, None, Some(compressed.into()));
+
+    while let Some(Ok(bollard::models::BuildInfo {
+        aux: Some(BuildInfoAux::BuildKit(inner)),
+        ..
+    })) = image_build_stream.next().await
+    {
+        println!("Response: {:?}", inner);
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
 
-    #[test]
-    fn simple_test() {
+    #[tokio::test]
+    async fn simple_test() {
+        let client = docker_connect().await;
+        let dockerfile = String::from(
+            "FROM alpine as builder1
+    RUN touch bollard.txt
+    FROM alpine as builder2
+    RUN --mount=type=bind,from=builder1,target=mnt cp mnt/bollard.txt buildkit-bollard.txt
+    ENTRYPOINT ls buildkit-bollard.txt
+    ",
+        );
+
+        build_image(&client, "myimage", &dockerfile).await;
+
         assert!(true);
     }
-
 }
