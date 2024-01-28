@@ -1,0 +1,8 @@
+Cargo.lock
+
+# rust
+/target
+
+# vim swap
+[._]*.sw[a-p]
+[._]sw[a-p]
