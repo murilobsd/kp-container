@@ -18,11 +18,47 @@
 use bollard::image::{BuildImageOptions, BuilderVersion};
 use bollard::models::BuildInfoAux;
 use bollard::Docker;
-use flate2::write::GzEncoder;
+use dockerfile_parser::Dockerfile;
+use std::str::FromStr;
 
 use futures_util::stream::StreamExt;
 
 use std::io::Write;
+
+fn get_port_from_dockerfile(dockerfile: &str) -> Option<u16> {
+    let dockerfile = Dockerfile::parse(dockerfile).unwrap();
+    let mut port: u16 = 0;
+
+    for stage in dockerfile.iter_stages() {
+        println!(
+            "stage #{} (parent: {:?}, root: {:?})",
+            stage.index, stage.parent, stage.root
+        );
+
+        for ins in stage.instructions {
+            match ins {
+                dockerfile_parser::Instruction::Misc(misc) => {
+                    if misc.instruction.content.as_str() == "EXPOSE" {
+                        match misc.arguments.components.get(0).unwrap() {
+                            dockerfile_parser::BreakableStringComponent::String(c)
+                                => {
+                                    port = c.content.trim().parse().unwrap();
+                                    break;
+                                }
+                            _ => {},
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if port == 0 {
+        None
+    } else {
+        Some(port)
+    }
+}
 
 fn compress(dockerfile: &str) -> Vec<u8> {
     let mut header = tar::Header::new_gnu();
@@ -78,7 +114,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn simple_test() {
+    async fn docker_build_image() {
         let client = docker_connect().await;
         let dockerfile = String::from(
             "FROM alpine as builder1
@@ -92,5 +128,21 @@ mod tests {
         build_image(&client, "myimage", &dockerfile).await;
 
         assert!(true);
+    }
+
+    #[test]
+    fn get_port_dockerfile() {
+        let dockerfile = String::from(
+            "FROM alpine as builder1
+    RUN touch bollard.txt
+    FROM alpine as builder2
+    RUN --mount=type=bind,from=builder1,target=mnt cp mnt/bollard.txt buildkit-bollard.txt
+    EXPOSE 3000
+    ENTRYPOINT ls buildkit-bollard.txt
+            "
+        );
+        let port = get_port_from_dockerfile(&dockerfile);
+        assert!(port.is_some());
+        assert_eq!(3000 as u16, port.unwrap());
     }
 }

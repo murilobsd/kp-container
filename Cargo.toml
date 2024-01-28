@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bollard = { version = "0.15.0", features = ["buildkit", "chrono"] }
+dockerfile-parser = "0.8.0"
 flate2 = "1.0.28"
 futures-util = "0.3.30"
 tar = "0.4.40"
