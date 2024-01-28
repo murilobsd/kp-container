@@ -12,6 +12,9 @@
 // ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+//
+// TODO: tag, auth, push, multi arch
+//
 use bollard::image::{BuildImageOptions, BuilderVersion};
 use bollard::models::BuildInfoAux;
 use bollard::Docker;
