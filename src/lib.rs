@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_must_use)]
 // Copyright (c) 2023 Murilo Ijanc' <mbsd@m0x.ru>
 //
 // Permission to use, copy, modify, and distribute this software for any
@@ -13,7 +14,7 @@
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 //
-// TODO: tag, auth, push, multi arch
+// TODO: multi arch
 //
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::Region;
@@ -21,12 +22,51 @@ use bollard::image::{BuildImageOptions, BuilderVersion};
 use bollard::models::BuildInfoAux;
 use bollard::Docker;
 use dockerfile_parser::Dockerfile;
-use std::str::FromStr;
 
 use futures_util::stream::StreamExt;
 
 use base64::prelude::*;
+use bollard::auth::DockerCredentials;
+use bollard::image::PushImageOptions;
+use bollard::image::TagImageOptions;
 use std::io::Write;
+
+use std::default::Default;
+
+async fn push_image(docker: &Docker, id: &str, repo: &str) {
+    //
+    // Tag
+    //
+    let tag_options = Some(TagImageOptions {
+        repo: repo,
+        tag: "latest",
+    });
+
+    docker.tag_image(id, tag_options).await;
+
+    ////
+    //// Push
+    ////
+    let push_options = Some(PushImageOptions { tag: "latest" });
+
+    let credentials = Some(DockerCredentials {
+       username: Some("AWS".to_string()),
+       password: Some("password".to_string()),
+       ..Default::default()
+   });
+
+    let stream = docker.push_image(
+        repo,
+        push_options,
+        credentials,
+    );
+
+    stream
+        .for_each(|l| async {
+            println!("{:?}", l.unwrap());
+        })
+        .await;
+}
 
 async fn get_credential() -> (String, String) {
     // Struct credentials to push
@@ -145,41 +185,48 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn docker_push_image() {
+        let client = docker_connect().await;
+        push_image(&client, "myimage", "").await;
+        assert!(true);
+    }
+
+    #[tokio::test]
     async fn aws_ecr_credential() {
         let _credential = get_credential().await;
         assert!(true);
     }
 
-    // #[tokio::test]
-    // async fn docker_build_image() {
-    //     let client = docker_connect().await;
-    //     let dockerfile = String::from(
-    //         "FROM alpine as builder1
-    // RUN touch bollard.txt
-    // FROM alpine as builder2
-    // RUN --mount=type=bind,from=builder1,target=mnt cp mnt/bollard.txt buildkit-bollard.txt
-    // ENTRYPOINT ls buildkit-bollard.txt
-    // ",
-    //     );
+    #[tokio::test]
+    async fn docker_build_image() {
+        let client = docker_connect().await;
+        let dockerfile = String::from(
+            "FROM alpine as builder1
+    RUN touch bollard.txt
+    FROM alpine as builder2
+    RUN --mount=type=bind,from=builder1,target=mnt cp mnt/bollard.txt buildkit-bollard.txt
+    ENTRYPOINT ls buildkit-bollard.txt
+    ",
+        );
 
-    //     build_image(&client, "myimage", &dockerfile).await;
+        build_image(&client, "myimage", &dockerfile).await;
 
-    //     assert!(true);
-    // }
+        assert!(true);
+    }
 
-    // #[test]
-    // fn get_port_dockerfile() {
-    //     let dockerfile = String::from(
-    //         "FROM alpine as builder1
-    // RUN touch bollard.txt
-    // FROM alpine as builder2
-    // RUN --mount=type=bind,from=builder1,target=mnt cp mnt/bollard.txt buildkit-bollard.txt
-    // EXPOSE 3000
-    // ENTRYPOINT ls buildkit-bollard.txt
-    //         "
-    //     );
-    //     let port = get_port_from_dockerfile(&dockerfile);
-    //     assert!(port.is_some());
-    //     assert_eq!(3000 as u16, port.unwrap());
-    // }
+    #[test]
+    fn get_port_dockerfile() {
+        let dockerfile = String::from(
+            "FROM alpine as builder1
+    RUN touch bollard.txt
+    FROM alpine as builder2
+    RUN --mount=type=bind,from=builder1,target=mnt cp mnt/bollard.txt buildkit-bollard.txt
+    EXPOSE 3000
+    ENTRYPOINT ls buildkit-bollard.txt
+            "
+        );
+        let port = get_port_from_dockerfile(&dockerfile);
+        assert!(port.is_some());
+        assert_eq!(3000 as u16, port.unwrap());
+    }
 }
