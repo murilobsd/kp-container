@@ -25,6 +25,18 @@ use futures_util::stream::StreamExt;
 
 use std::io::Write;
 
+fn get_credential() -> (String, String) {
+    // Struct credentials to push
+    // https://docs.rs/bollard/latest/bollard/auth/struct.DockerCredentials.html
+    //
+    // AWS ECR
+    // https://docs.rs/aws-sdk-ecr/latest/aws_sdk_ecr/types/struct.AuthorizationData.html
+    //
+    // Example in go for split AuthorizationData
+    // https://github.com/chialab/aws-ecr-get-login-password/blob/main/main.go
+    todo!()
+}
+
 fn get_port_from_dockerfile(dockerfile: &str) -> Option<u16> {
     let dockerfile = Dockerfile::parse(dockerfile).unwrap();
     let mut port: u16 = 0;
